@@ -1,0 +1,18 @@
+{
+  "name": "facecamserver",
+  "version": "1.0.0",
+  "description": "Use your phone as a webcam via WebRTC over LAN",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init": "node init.js"
+  },
+  "keywords": ["webcam", "webrtc", "facecam"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.3"
+  }
+}

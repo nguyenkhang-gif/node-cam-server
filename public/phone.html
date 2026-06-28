@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FaceCam</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100dvh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #fff;
+    overflow: hidden;
+  }
+
+  /* Preview */
+  #preview {
+    width: 100%;
+    flex: 1;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Status pill */
+  #statusWrap {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+  }
+  #status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  #status .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #555;
+    flex-shrink: 0;
+  }
+  #status.connected .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+  #status.error .dot { background: #ef4444; }
+  #status.connected { color: #fff; }
+  #status.error { color: #fca5a5; }
+
+  /* Start overlay */
+  #startOverlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 30;
+  }
+  #startOverlay .app-icon {
+    width: 72px; height: 72px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    margin-bottom: 4px;
+  }
+  #startOverlay h2 { font-size: 22px; font-weight: 700; }
+  #startOverlay p { font-size: 14px; color: #666; }
+  #startBtn {
+    margin-top: 8px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 36px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 16px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: -0.2px;
+  }
+  #startBtn:active { opacity: 0.8; }
+  #startBtn svg { width: 20px; height: 20px; fill: #fff; }
+
+  /* Cam select bar */
+  #camBar {
+    display: none;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    z-index: 20;
+    justify-content: flex-start;
+    gap: 8px;
+    align-items: center;
+  }
+  #camSelect {
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #fff;
+    padding: 7px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    max-width: 180px;
+  }
+
+  /* Quick bar */
+  #quickBar {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: rgba(10,10,10,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255,255,255,0.07);
+    padding: 10px 0 max(20px, env(safe-area-inset-bottom));
+    z-index: 15;
+  }
+
+  .qbtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 6px 14px;
+    border-radius: 12px;
+    flex: 1;
+    transition: background 0.15s;
+  }
+  .qbtn:active { background: rgba(255,255,255,0.1); }
+  .qbtn .icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: background 0.15s;
+  }
+  .qbtn span { font-size: 10px; color: #888; font-weight: 500; }
+  .qbtn.active .icon { background: #3b82f6; }
+  .qbtn.active span { color: #93c5fd; }
+
+  /* Settings panel */
+  #settingsPanel {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #0a0a0f;
+    z-index: 40;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #settingsPanel.open { display: block; }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid #1a1a1a;
+    position: sticky;
+    top: 0;
+    background: #0a0a0f;
+    z-index: 1;
+  }
+  .panel-header h2 { font-size: 17px; font-weight: 700; }
+  .panel-close {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: #fff;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .panel-body { padding: 16px 20px 40px; display: flex; flex-direction: column; gap: 6px; }
+
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #3b82f6;
+    padding: 14px 0 8px;
+  }
+
+  .cfg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #141418;
+    border: 1px solid #1e1e24;
+    border-radius: 12px;
+    padding: 13px 16px;
+    gap: 12px;
+  }
+  .cfg-row + .cfg-row { margin-top: 2px; }
+  .cfg-row-label { font-size: 15px; color: #ddd; }
+  .cfg-row-sub { font-size: 12px; color: #555; margin-top: 2px; }
+
+  .cfg-row select, .cfg-row input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 110px;
+    text-align: right;
+  }
+  .cfg-row input[type=number] { width: 80px; }
+
+  .save-btn {
+    margin-top: 16px;
+    width: 100%;
+    padding: 16px;
+    background: #22c55e;
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .save-btn:active { opacity: 0.85; }
+</style>
+</head>
+<body>
+
+<video id="preview" autoplay muted playsinline></video>
+
+<div id="statusWrap">
+  <div id="status"><div class="dot"></div> Đang kết nối...</div>
+</div>
+
+<div id="camBar">
+  <select id="camSelect"></select>
+</div>
+
+<!-- Start overlay -->
+<div id="startOverlay">
+  <div class="app-icon">📷</div>
+  <h2>FaceCam</h2>
+  <p>Dùng điện thoại làm webcam</p>
+  <button id="startBtn">
+    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    Bật Camera
+  </button>
+</div>
+
+<!-- Quick bar -->
+<div id="quickBar">
+  <button class="qbtn" id="qFlipCam">
+    <div class="icon">🔄</div>
+    <span>Flip cam</span>
+  </button>
+  <button class="qbtn" id="qFlipH">
+    <div class="icon">⇔</div>
+    <span>Flip H</span>
+  </button>
+  <button class="qbtn" id="qFlipV">
+    <div class="icon">⇕</div>
+    <span>Flip V</span>
+  </button>
+  <button class="qbtn" id="qRotate">
+    <div class="icon">↻</div>
+    <span id="rotLabel">0°</span>
+  </button>
+  <button class="qbtn" id="qSettings">
+    <div class="icon">⚙️</div>
+    <span>Config</span>
+  </button>
+</div>
+
+<!-- Settings Panel -->
+<div id="settingsPanel">
+  <div class="panel-header">
+    <h2>⚙️ Cài đặt</h2>
+    <button class="panel-close" id="closeSettings">✕</button>
+  </div>
+
+  <div class="panel-body">
+
+    <div class="section-label">📱 Camera</div>
+
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Mặt camera</div>
+      </div>
+      <select id="cfg-facingMode">
+        <option value="environment">📷 Sau</option>
+        <option value="user">🤳 Trước</option>
+      </select>
+    </div>
+
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Chiều rộng</div>
+        <div class="cfg-row-sub">pixels</div>
+      </div>
+      <input id="cfg-width" type="number" value="1280">
+    </div>
+
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Chiều cao</div>
+        <div class="cfg-row-sub">pixels</div>
+      </div>
+      <input id="cfg-height" type="number" value="720">
+    </div>
+
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Frame rate</div>
+      </div>
+      <select id="cfg-frameRate">
+        <option value="15">15 fps</option>
+        <option value="24">24 fps</option>
+        <option value="30" selected>30 fps</option>
+        <option value="60">60 fps</option>
+      </select>
+    </div>
+
+    <div class="section-label">🖥️ Viewer (PC)</div>
+
+    <div class="cfg-row">
+      <div class="cfg-row-label">Lật ngang</div>
+      <select id="cfg-flipH">
+        <option value="false">Tắt</option>
+        <option value="true">Bật</option>
+      </select>
+    </div>
+
+    <div class="cfg-row">
+      <div class="cfg-row-label">Lật dọc</div>
+      <select id="cfg-flipV">
+        <option value="false">Tắt</option>
+        <option value="true">Bật</option>
+      </select>
+    </div>
+
+    <div class="cfg-row">
+      <div class="cfg-row-label">Xoay</div>
+      <select id="cfg-rotation">
+        <option value="0">0°</option>
+        <option value="90">90°</option>
+        <option value="180">180°</option>
+        <option value="270">270°</option>
+      </select>
+    </div>
+
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Ẩn controls</div>
+        <div class="cfg-row-sub">Trên viewer PC</div>
+      </div>
+      <select id="cfg-hideControls">
+        <option value="false">Hiện</option>
+        <option value="true">Ẩn</option>
+      </select>
+    </div>
+
+    <button class="save-btn" id="saveBtn">
+      <span>💾</span> Lưu & Áp dụng
+    </button>
+
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const ROOM = 'facecam'
+const socket = io()
+const statusEl = document.getElementById('status')
+const preview = document.getElementById('preview')
+const camSelect = document.getElementById('camSelect')
+const settingsPanel = document.getElementById('settingsPanel')
+
+let pc = null
+let localStream = null
+let facingMode = 'environment'
+let phoneCfg = { facingMode: 'environment', width: 1280, height: 720, frameRate: 30 }
+let cfg = {}
+
+function setStatus(text, state = '') {
+  statusEl.querySelector('.dot') || (statusEl.innerHTML = '<div class="dot"></div> ')
+  statusEl.childNodes[statusEl.childNodes.length - 1].textContent = ' ' + text
+  statusEl.className = state
+}
+
+function loadCfgToUI(c) {
+  cfg = c
+  phoneCfg = { ...phoneCfg, ...(c.phone || {}) }
+  facingMode = phoneCfg.facingMode
+
+  document.getElementById('cfg-facingMode').value = phoneCfg.facingMode
+  document.getElementById('cfg-width').value = phoneCfg.width
+  document.getElementById('cfg-height').value = phoneCfg.height
+  document.getElementById('cfg-frameRate').value = phoneCfg.frameRate
+  document.getElementById('cfg-flipH').value = String(c.flipH ?? false)
+  document.getElementById('cfg-flipV').value = String(c.flipV ?? false)
+  document.getElementById('cfg-rotation').value = String(c.rotation ?? 0)
+  document.getElementById('cfg-hideControls').value = String(c.hideControls ?? false)
+}
+
+fetch('/api/config').then(r => r.json()).then(c => {
+  loadCfgToUI(c)
+  document.getElementById('qFlipH').classList.toggle('active', !!c.flipH)
+  document.getElementById('qFlipV').classList.toggle('active', !!c.flipV)
+  document.getElementById('rotLabel').textContent = (c.rotation ?? 0) + '°'
+})
+
+document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('open'))
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const updated = {
+    flipH: document.getElementById('cfg-flipH').value === 'true',
+    flipV: document.getElementById('cfg-flipV').value === 'true',
+    rotation: Number(document.getElementById('cfg-rotation').value),
+    hideControls: document.getElementById('cfg-hideControls').value === 'true',
+    phone: {
+      facingMode: document.getElementById('cfg-facingMode').value,
+      width: Number(document.getElementById('cfg-width').value),
+      height: Number(document.getElementById('cfg-height').value),
+      frameRate: Number(document.getElementById('cfg-frameRate').value),
+    }
+  }
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updated)
+  })
+  loadCfgToUI(updated)
+  settingsPanel.classList.remove('open')
+  setStatus('✅ Đã lưu — restart stream để áp dụng camera')
+  socket.emit('config_updated')
+})
+
+async function getCameras() {
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  const cams = devices.filter(d => d.kind === 'videoinput')
+  camSelect.innerHTML = ''
+  cams.forEach((cam, i) => {
+    const opt = document.createElement('option')
+    opt.value = cam.deviceId
+    const label = cam.label.toLowerCase()
+    const tag = label.includes('front') || label.includes('user') ? '🤳'
+              : label.includes('back') || label.includes('rear') || label.includes('environment') ? '📷'
+              : '📹'
+    opt.textContent = `${tag} ${cam.label || `Camera ${i + 1}`}`
+    if (phoneCfg.facingMode === 'environment' && (label.includes('back') || label.includes('rear'))) opt.selected = true
+    camSelect.appendChild(opt)
+  })
+}
+
+async function startStream(deviceId) {
+  if (localStream) localStream.getTracks().forEach(t => t.stop())
+  const constraints = {
+    video: deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: phoneCfg.width }, height: { ideal: phoneCfg.height }, frameRate: { ideal: phoneCfg.frameRate } }
+      : { facingMode, width: { ideal: phoneCfg.width }, height: { ideal: phoneCfg.height }, frameRate: { ideal: phoneCfg.frameRate } },
+    audio: false
+  }
+  localStream = await navigator.mediaDevices.getUserMedia(constraints)
+  preview.srcObject = localStream
+  if (pc) {
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
+    if (sender) sender.replaceTrack(localStream.getVideoTracks()[0])
+  }
+}
+
+async function createPeer() {
+  if (pc) { pc.close(); pc = null }
+  pc = new RTCPeerConnection({ iceServers: [] })
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate) socket.emit('ice', { room: ROOM, candidate })
+  }
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'connected') setStatus('Đang stream', 'connected')
+    else if (['disconnected', 'failed'].includes(pc.connectionState)) setStatus('Mất kết nối', 'error')
+  }
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+  socket.emit('offer', { room: ROOM, sdp: offer })
+}
+
+socket.on('connect', () => {
+  socket.emit('join', ROOM)
+  setStatus('Nhấn nút để bật camera')
+})
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('startBtn')
+  btn.disabled = true
+  btn.innerHTML = '<span>⏳</span> Đang mở...'
+  try {
+    await getCameras()
+    await startStream()
+    document.getElementById('startOverlay').style.display = 'none'
+    document.getElementById('camBar').style.display = 'flex'
+    setStatus('Chờ viewer kết nối...')
+  } catch (e) {
+    btn.disabled = false
+    btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:#fff"><path d="M8 5v14l11-7z"/></svg> Bật Camera'
+    setStatus('❌ ' + e.message, 'error')
+  }
+})
+
+socket.on('answer', async ({ sdp }) => { if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp)) })
+socket.on('ice', async ({ candidate }) => { if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)) })
+socket.on('request_stream', async () => { if (localStream) await createPeer() })
+
+camSelect.addEventListener('change', () => startStream(camSelect.value))
+
+function saveViewerCfg(patch) {
+  const updated = { ...cfg, ...patch }
+  cfg = updated
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
+  socket.emit('config_updated')
+}
+
+document.getElementById('qFlipCam').addEventListener('click', async () => {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment'
+  phoneCfg.facingMode = facingMode
+  if (localStream) await startStream()
+})
+
+document.getElementById('qFlipH').addEventListener('click', function() {
+  cfg.flipH = !cfg.flipH
+  this.classList.toggle('active', cfg.flipH)
+  saveViewerCfg({ flipH: cfg.flipH })
+})
+
+document.getElementById('qFlipV').addEventListener('click', function() {
+  cfg.flipV = !cfg.flipV
+  this.classList.toggle('active', cfg.flipV)
+  saveViewerCfg({ flipV: cfg.flipV })
+})
+
+document.getElementById('qRotate').addEventListener('click', function() {
+  cfg.rotation = ((cfg.rotation ?? 0) + 90) % 360
+  document.getElementById('rotLabel').textContent = cfg.rotation + '°'
+  saveViewerCfg({ rotation: cfg.rotation })
+})
+
+document.getElementById('qSettings').addEventListener('click', () => settingsPanel.classList.add('open'))
+</script>
+</body>
+</html>

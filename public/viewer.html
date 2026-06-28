@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>FaceCam - Viewer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+  video { width: 100vw; height: 100vh; object-fit: contain; transition: transform 0.2s; }
+
+  #controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    background: rgba(10,10,10,0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 8px 12px;
+    border-radius: 20px;
+  }
+
+  .ctrl-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: #ccc;
+    padding: 7px 13px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .ctrl-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+  .ctrl-btn.active { background: #3b82f6; color: #fff; }
+
+  .ctrl-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255,255,255,0.1);
+    margin: 0 2px;
+  }
+
+  #status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #666;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+  #status .dot { width: 7px; height: 7px; border-radius: 50%; background: #555; flex-shrink: 0; }
+  #status.live .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e88; animation: pulse 2s infinite; }
+  #status.error .dot { background: #ef4444; }
+  #status.live { color: #fff; }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .hide-btn {
+    background: transparent;
+    border: none;
+    color: #555;
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .hide-btn:hover { background: rgba(255,255,255,0.08); color: #ccc; }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+
+<div id="controls">
+  <div id="status"><div class="dot"></div> Chờ phone...</div>
+  <div class="ctrl-divider"></div>
+  <button class="ctrl-btn" id="flipH">⇔ Flip H</button>
+  <button class="ctrl-btn" id="flipV">⇕ Flip V</button>
+  <button class="ctrl-btn" id="rot90">↻ 90°</button>
+  <div class="ctrl-divider"></div>
+  <button class="hide-btn" id="hideBtn" title="Ẩn controls (double-click để hiện lại)">✕</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const ROOM = 'facecam'
+const socket = io()
+const video = document.getElementById('video')
+const statusEl = document.getElementById('status')
+
+let pc = null
+let retryTimer = null
+let fH = false, fV = false, rot = 0
+
+function applyTransform() {
+  video.style.transform = `rotate(${rot}deg) scaleX(${fH ? -1 : 1}) scaleY(${fV ? -1 : 1})`
+}
+
+function setStatus(text, state = '') {
+  statusEl.querySelector('span') ? statusEl.querySelector('span').textContent = text : statusEl.innerHTML = `<div class="dot"></div><span>${text}</span>`
+  statusEl.childNodes[statusEl.childNodes.length - 1].textContent = text
+  statusEl.className = state
+}
+
+function saveConfig() {
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ flipH: fH, flipV: fV, rotation: rot })
+  })
+}
+
+const controls = document.getElementById('controls')
+
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  fH = cfg.flipH ?? false
+  fV = cfg.flipV ?? false
+  rot = cfg.rotation ?? 0
+  document.getElementById('flipH').classList.toggle('active', fH)
+  document.getElementById('flipV').classList.toggle('active', fV)
+  if (cfg.hideControls) controls.style.display = 'none'
+  applyTransform()
+})
+
+document.getElementById('flipH').addEventListener('click', function() {
+  fH = !fH; this.classList.toggle('active', fH); applyTransform(); saveConfig()
+})
+document.getElementById('flipV').addEventListener('click', function() {
+  fV = !fV; this.classList.toggle('active', fV); applyTransform(); saveConfig()
+})
+document.getElementById('rot90').addEventListener('click', function() {
+  rot = (rot + 90) % 360; applyTransform(); saveConfig()
+})
+document.getElementById('hideBtn').addEventListener('click', () => {
+  controls.style.display = 'none'
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hideControls: true }) })
+})
+document.addEventListener('dblclick', () => {
+  controls.style.display = ''
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hideControls: false }) })
+})
+
+function requestStream() {
+  socket.emit('join', ROOM)
+  socket.emit('request_stream')
+}
+
+async function keepAlive() {
+  try { await navigator.wakeLock.request('screen') } catch {}
+  const ctx = new AudioContext()
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
+  const src = ctx.createBufferSource()
+  src.buffer = buf; src.loop = true
+  src.connect(ctx.destination); src.start()
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 1
+  document.body.appendChild(canvas)
+  const gl = canvas.getContext('webgl')
+  function tick() { gl.clear(gl.COLOR_BUFFER_BIT); requestAnimationFrame(tick) }
+  tick()
+  document.addEventListener('visibilitychange', () => { if (ctx.state === 'suspended') ctx.resume() })
+}
+keepAlive()
+
+socket.on('connect', () => {
+  requestStream()
+  clearInterval(retryTimer)
+  retryTimer = setInterval(() => {
+    if (!video.srcObject || video.readyState === 0) socket.emit('request_stream')
+    else clearInterval(retryTimer)
+  }, 5000)
+})
+
+socket.on('offer', async ({ sdp }) => {
+  if (pc) { pc.close(); pc = null }
+  pc = new RTCPeerConnection({ iceServers: [] })
+  pc.ontrack = ({ streams }) => {
+    video.srcObject = streams[0]
+    statusEl.innerHTML = '<div class="dot"></div>🟢 Đang stream'
+    statusEl.className = 'live'
+  }
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate) socket.emit('ice', { room: ROOM, candidate })
+  }
+  pc.onconnectionstatechange = () => {
+    if (['disconnected', 'failed'].includes(pc.connectionState)) {
+      statusEl.innerHTML = '<div class="dot"></div>Mất kết nối'
+      statusEl.className = 'error'
+    }
+  }
+  await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+  socket.emit('answer', { room: ROOM, sdp: answer })
+})
+
+socket.on('ice', async ({ candidate }) => {
+  if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate))
+})
+
+socket.on('config_updated', () => {
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    fH = cfg.flipH ?? false
+    fV = cfg.flipV ?? false
+    rot = cfg.rotation ?? 0
+    document.getElementById('flipH').classList.toggle('active', fH)
+    document.getElementById('flipV').classList.toggle('active', fV)
+    controls.style.display = cfg.hideControls ? 'none' : ''
+    applyTransform()
+  })
+})
+
+socket.on('phone_disconnected', () => {
+  statusEl.innerHTML = '<div class="dot"></div>Phone mất kết nối'
+  statusEl.className = 'error'
+  controls.style.display = ''
+})
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "flipH": false,
+  "flipV": false,
+  "rotation": 270,
+  "hideControls": true,
+  "phone": {
+    "facingMode": "environment",
+    "width": 1280,
+    "height": 720,
+    "frameRate": 24
+  }
+}
