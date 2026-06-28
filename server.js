@@ -28,7 +28,7 @@ app.use(express.json())
 const CONFIG_PATH = path.join(__dirname, 'config.json')
 const DEFAULT_CONFIG = {
   flipH: false, flipV: false, rotation: 0, hideControls: false,
-  phone: { facingMode: 'environment', width: 1280, height: 720, frameRate: 30 }
+  phone: { facingMode: 'environment', width: 1280, height: 720, frameRate: 30, maxBitrate: 4000000 }
 }
 const VALID_CONFIG_KEYS = new Set(['flipH', 'flipV', 'rotation', 'hideControls', 'phone'])
 

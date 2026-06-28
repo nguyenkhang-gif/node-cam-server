@@ -352,6 +352,19 @@
       </select>
     </div>
 
+    <div class="cfg-row">
+      <div>
+        <div class="cfg-row-label">Bitrate</div>
+        <div class="cfg-row-sub">cao = nét hơn, cần băng thông tốt</div>
+      </div>
+      <select id="cfg-maxBitrate">
+        <option value="2000000">2 Mbps (thấp)</option>
+        <option value="4000000" selected>4 Mbps (giữa)</option>
+        <option value="6000000">6 Mbps (cao)</option>
+        <option value="8000000">8 Mbps (rất cao)</option>
+      </select>
+    </div>
+
     <div class="section-label">🖥️ Viewer (PC)</div>
 
     <div class="cfg-row">
@@ -410,7 +423,7 @@ const settingsPanel = document.getElementById('settingsPanel')
 let pc = null
 let localStream = null
 let facingMode = 'environment'
-let phoneCfg = { facingMode: 'environment', width: 1280, height: 720, frameRate: 30 }
+let phoneCfg = { facingMode: 'environment', width: 1280, height: 720, frameRate: 30, maxBitrate: 4000000 }
 let cfg = {}
 
 function setStatus(text, state = '') {
@@ -428,6 +441,7 @@ function loadCfgToUI(c) {
   document.getElementById('cfg-width').value = phoneCfg.width
   document.getElementById('cfg-height').value = phoneCfg.height
   document.getElementById('cfg-frameRate').value = phoneCfg.frameRate
+  document.getElementById('cfg-maxBitrate').value = String(phoneCfg.maxBitrate)
   document.getElementById('cfg-flipH').value = String(c.flipH ?? false)
   document.getElementById('cfg-flipV').value = String(c.flipV ?? false)
   document.getElementById('cfg-rotation').value = String(c.rotation ?? 0)
@@ -454,6 +468,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       width: Number(document.getElementById('cfg-width').value),
       height: Number(document.getElementById('cfg-height').value),
       frameRate: Number(document.getElementById('cfg-frameRate').value),
+      maxBitrate: Number(document.getElementById('cfg-maxBitrate').value),
     }
   }
   await fetch('/api/config', {
@@ -496,14 +511,28 @@ async function startStream(deviceId) {
   preview.srcObject = localStream
   if (pc) {
     const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
-    if (sender) sender.replaceTrack(localStream.getVideoTracks()[0])
+    if (sender) { await sender.replaceTrack(localStream.getVideoTracks()[0]); await tuneVideoSender() }
   }
+}
+
+// Ưu tiên độ nét cho video sender. Trần bitrate lấy từ config (mặc định WebRTC bóp xuống ~1-2.5Mbps gây mờ)
+async function tuneVideoSender() {
+  if (!pc) return
+  const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
+  if (!sender) return
+  if (sender.track) sender.track.contentHint = 'detail'  // ưu tiên nét hơn mượt
+  const params = sender.getParameters()
+  if (!params.encodings || !params.encodings.length) params.encodings = [{}]
+  params.encodings[0].maxBitrate = phoneCfg.maxBitrate || 4000000
+  params.degradationPreference = 'maintain-resolution'  // mạng yếu thì giảm fps, giữ độ phân giải
+  try { await sender.setParameters(params) } catch (e) { console.warn('tuneVideoSender failed', e) }
 }
 
 async function createPeer() {
   if (pc) { pc.close(); pc = null }
   pc = new RTCPeerConnection({ iceServers: [] })
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+  await tuneVideoSender()
   pc.onicecandidate = ({ candidate }) => {
     if (candidate) socket.emit('ice', { room: ROOM, candidate })
   }
