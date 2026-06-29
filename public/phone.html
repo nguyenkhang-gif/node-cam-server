@@ -550,6 +550,21 @@ socket.on('connect', () => {
   setStatus('Nhấn nút để bật camera')
 })
 
+// Giữ màn hình sáng khi đang stream (chống điện thoại tự sleep → ngắt camera)
+let wakeLock = null
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen')
+      wakeLock.addEventListener('release', () => { wakeLock = null })
+    }
+  } catch (e) { console.warn('Wake Lock không khả dụng:', e.name) }
+}
+// Khi quay lại tab (màn hình bật lại) thì xin lại wake lock — vì OS tự release khi tab ẩn
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && localStream && !wakeLock) keepAwake()
+})
+
 document.getElementById('startBtn').addEventListener('click', async () => {
   const btn = document.getElementById('startBtn')
   btn.disabled = true
@@ -557,6 +572,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
   try {
     await getCameras()
     await startStream()
+    await keepAwake()
     document.getElementById('startOverlay').style.display = 'none'
     document.getElementById('camBar').style.display = 'flex'
     setStatus('Chờ viewer kết nối...')
