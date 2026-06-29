@@ -571,6 +571,16 @@ socket.on('answer', async ({ sdp }) => { if (pc) await pc.setRemoteDescription(n
 socket.on('ice', async ({ candidate }) => { if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)) })
 socket.on('request_stream', async () => { if (localStream) await createPeer() })
 
+// Config đổi từ control.html / viewer → nạp lại để lần bật camera kế tiếp dùng giá trị mới
+socket.on('config_updated', async () => {
+  const c = await fetch('/api/config').then(r => r.json())
+  loadCfgToUI(c)
+  document.getElementById('qFlipH').classList.toggle('active', !!c.flipH)
+  document.getElementById('qFlipV').classList.toggle('active', !!c.flipV)
+  document.getElementById('rotLabel').textContent = (c.rotation ?? 0) + '°'
+  if (localStream) await tuneVideoSender()  // bitrate áp ngay; res/fps cần bật lại camera
+})
+
 camSelect.addEventListener('change', () => startStream(camSelect.value))
 
 function saveViewerCfg(patch) {

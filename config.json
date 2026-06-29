@@ -7,7 +7,7 @@
     "facingMode": "environment",
     "width": 1280,
     "height": 720,
-    "frameRate": 24,
-    "maxBitrate": 4000000
+    "frameRate": 30,
+    "maxBitrate": 6000000
   }
 }
